@@ -1,0 +1,12 @@
+.env
+bridge.log
+__pycache__/
+*.py[cod]
+.venv/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.idea/
