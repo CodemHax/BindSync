@@ -1,5 +1,6 @@
 import discord
 from src.utils.bridge import is_from_telegram, format_from_discord
+from src.database import store_functions
 
 
 def dd_client(channel_id):
@@ -27,20 +28,43 @@ def dd_client(channel_id):
         if not forward_cb:
             return
 
-
         reply_to_telegram_message_id = None
+        reply_to_internal_id = None
+        reply_to_dc_id = None
         ref = getattr(message, 'reference', None)
         if ref and getattr(ref, 'message_id', None):
+            reply_to_dc_id = ref.message_id
             reply_to_telegram_message_id = map_dc_to_tg.get(ref.message_id)
+            try:
+                m = await store_functions.find_by_dc_id(ref.message_id)
+                reply_to_internal_id = m["id"] if m else None
+            except Exception:
+                reply_to_internal_id = None
+
+        dc_msg_id = message.id
+        try:
+            await store_functions.add_message(
+                source='discord',
+                text=message.content or "",
+                username=message.author.display_name,
+                dc_msg_id=dc_msg_id,
+                reply_to_dc_id=reply_to_dc_id,
+                reply_to_tg_id=reply_to_telegram_message_id,
+                reply_to_id=reply_to_internal_id,
+            )
+        except Exception:
+            pass
 
         try:
             tg_msg_id = await forward_cb(msg, reply_to_telegram_message_id=reply_to_telegram_message_id)
             if tg_msg_id:
-                dc_msg_id = message.id
                 map_dc_to_tg[dc_msg_id] = tg_msg_id
                 map_tg_to_dc[tg_msg_id] = dc_msg_id
+                try:
+                    await store_functions.set_tg_id_for_dc(dc_msg_id, int(tg_msg_id))
+                except Exception:
+                    pass
         except Exception:
             pass
 
     return client
-

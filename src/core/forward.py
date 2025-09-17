@@ -1,8 +1,12 @@
 import logging
+import asyncio
+import uvicorn
 
 from src.config import load_config
 from src.bot.tg_bot import tg_client
 from src.bot.dc_bot import dd_client
+from src.database import database, store_functions
+from src.api.server import app, set_runtime
 from src.utils.bridge import (
     forward_to_discord_with_reply as util_forward_dc_reply,
     forward_to_telegram_with_reply as util_forward_tg_reply,
@@ -17,8 +21,13 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger(__name__)
+
 async def main():
     cfg = load_config()
+
+    await database.init_db(cfg["mongo_uri"], cfg["mongo_db"])
+    await store_functions.configure()
+    logger.info("Connected to MongoDB")
 
     map_tg_to_dc = {}
     map_dc_to_tg = {}
@@ -52,10 +61,18 @@ async def main():
     setattr(dbot, 'map_tg_to_dc', map_tg_to_dc)
     setattr(dbot, 'map_dc_to_tg', map_dc_to_tg)
 
+    set_runtime(tbot, dbot, cfg, map_tg_to_dc, map_dc_to_tg)
+
+    config = uvicorn.Config(app, host=cfg["api_host"], port=cfg["api_port"], log_level="info")
+    server = uvicorn.Server(config)
+    api_task = asyncio.create_task(server.serve())
+    logger.info(f"Starting API server on {cfg['api_host']}:{cfg['api_port']}")
+
     async with tbot, dbot:
         logger.info("Starting Telegram bot polling...")
         await tbot.initialize()
         await tbot.start()
-        await tbot.updater.start_polling()
         logger.info("Starting Discord bot...")
-        await dbot.start(cfg["discord_token"])
+        discord_task = asyncio.create_task(dbot.start(cfg["discord_token"]))
+        polling_task = asyncio.create_task(tbot.updater.start_polling())
+        await asyncio.gather(api_task, discord_task, polling_task)

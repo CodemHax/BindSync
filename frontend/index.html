@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BindSync Frontend</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .header {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .message-container {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+        .message {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            position: relative;
+        }
+        .message.telegram {
+            background-color: #e8f5fd;
+            border-left: 4px solid #3498db;
+        }
+        .message.discord {
+            background-color: #f0e6ff;
+            border-left: 4px solid #7289da;
+        }
+        .message.api {
+            background-color: #eafaf1;
+            border-left: 4px solid #2ecc71;
+        }
+        .username {
+            font-weight: bold;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #888;
+            position: absolute;
+            right: 10px;
+            top: 10px;
+        }
+        .reply-to {
+            font-size: 0.8em;
+            color: #888;
+            border-left: 2px solid #888;
+            padding-left: 10px;
+            margin-bottom: 5px;
+            font-style: italic;
+        }
+        .compose-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input, textarea, button {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        textarea {
+            flex-grow: 1;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .hidden {
+            display: none;
+        }
+        #cancelReply {
+            background-color: #e74c3c;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>BindSync</h1>
+        <p>Message Bridge between Telegram and Discord</p>
+    </div>
+
+    <div class="message-container" id="messages">
+    </div>
+
+    <div id="replyingTo" class="hidden">
+        <p>Replying to: <span id="replyUsername"></span> - <span id="replyText"></span>
+            <button id="cancelReply">Cancel</button>
+        </p>
+    </div>
+
+    <div class="compose-box">
+        <input type="text" id="username" placeholder="Your Name" value="Web User">
+        <textarea id="messageText" placeholder="Type your message..."></textarea>
+        <button id="sendButton">Send</button>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        let replyingToId = null;
+        let isConnected = false;
+
+        function formatDate(timestamp) {
+            const date = new Date(timestamp * 1000);
+            return date.toLocaleString();
+        }
+
+        function getSourceClass(source) {
+            if (source?.includes('telegram')) return 'telegram';
+            if (source?.includes('discord')) return 'discord';
+            return 'api';
+        }
+
+        function showStatus(message, isError = false) {
+            const messagesContainer = document.getElementById('messages');
+
+            if (!document.getElementById('status-message')) {
+                const statusElement = document.createElement('div');
+                statusElement.id = 'status-message';
+                statusElement.style.padding = '10px';
+                statusElement.style.margin = '10px 0';
+                statusElement.style.borderRadius = '5px';
+                statusElement.style.textAlign = 'center';
+
+                messagesContainer.appendChild(statusElement);
+            }
+
+            const statusElement = document.getElementById('status-message');
+            statusElement.textContent = message;
+            statusElement.style.backgroundColor = isError ? '#ffcccc' : '#eafaf1';
+            statusElement.style.color = isError ? '#e74c3c' : '#27ae60';
+        }
+
+        async function loadMessages() {
+            try {
+                const response = await fetch(`${API_URL}/messages`);
+
+                if (!response.ok) {
+                    throw new Error(`Server returned ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (!isConnected) {
+                    isConnected = true;
+                    showStatus('Connected to server!');
+
+                    setTimeout(() => {
+                        const statusElement = document.getElementById('status-message');
+                        if (statusElement) statusElement.remove();
+                    }, 3000);
+                }
+
+                const messagesContainer = document.getElementById('messages');
+
+                const statusElement = document.getElementById('status-message');
+                messagesContainer.innerHTML = '';
+                if (statusElement) {
+                    messagesContainer.appendChild(statusElement);
+                }
+
+                const sortedMessages = data.messages.sort((a, b) => a.timestamp - b.timestamp);
+
+                if (sortedMessages.length === 0) {
+                    showStatus('No messages found. Send your first message!');
+                    return;
+                }
+
+                for (const message of sortedMessages) {
+                    const messageElement = document.createElement('div');
+                    messageElement.className = `message ${getSourceClass(message.source)}`;
+                    messageElement.dataset.id = message.id;
+
+                    let messageHTML = '';
+
+                    if (message.reply_to_id) {
+                        const originalMessage = data.messages.find(m => m.id === message.reply_to_id);
+                        if (originalMessage) {
+                            messageHTML += `<div class="reply-to">In reply to ${originalMessage.username || 'Unknown'}: ${originalMessage.text}</div>`;
+                        }
+                    }
+
+                    messageHTML += `
+                        <span class="username">${message.username || 'Unknown'}</span>: ${message.text}
+                        <span class="timestamp">${formatDate(message.timestamp)}</span>
+                    `;
+
+                    messageElement.innerHTML = messageHTML;
+
+                    messageElement.addEventListener('click', () => {
+                        setReplyTo(message);
+                    });
+
+                    messagesContainer.appendChild(messageElement);
+                }
+
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            } catch (error) {
+                console.error('Error loading messages:', error);
+                isConnected = false;
+                showStatus('Cannot connect to server. Is it running?', true);
+            }
+        }
+
+        function setReplyTo(message) {
+            replyingToId = message.id;
+            document.getElementById('replyingTo').classList.remove('hidden');
+            document.getElementById('replyUsername').textContent = message.username || 'Unknown';
+            document.getElementById('replyText').textContent = message.text;
+        }
+
+        async function sendMessage() {
+            const text = document.getElementById('messageText').value.trim();
+            const username = document.getElementById('username').value.trim() || 'Web User';
+
+            if (!text) return;
+
+            try {
+                let endpoint, payload;
+
+                if (replyingToId) {
+                    endpoint = `${API_URL}/messages/${replyingToId}/reply`;
+                    payload = { text, username };
+                } else {
+                    endpoint = `${API_URL}/messages`;
+                    payload = { text, username };
+                }
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    document.getElementById('messageText').value = '';
+                    cancelReply();
+                    loadMessages();
+                } else {
+                    console.error('Failed to send message', await response.text());
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+            }
+        }
+
+        function cancelReply() {
+            replyingToId = null;
+            document.getElementById('replyingTo').classList.add('hidden');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadMessages();
+            setInterval(loadMessages, 5000);
+
+            document.getElementById('sendButton').addEventListener('click', sendMessage);
+            document.getElementById('messageText').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            document.getElementById('cancelReply').addEventListener('click', cancelReply);
+        });
+    </script>
+</body>
+</html>
