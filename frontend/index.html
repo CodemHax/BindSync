@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BindSync Frontend</title>
+    <title>Bind Sync</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -41,10 +41,7 @@
             background-color: #f0e6ff;
             border-left: 4px solid #7289da;
         }
-        .message.api {
-            background-color: #eafaf1;
-            border-left: 4px solid #2ecc71;
-        }
+
         .username {
             font-weight: bold;
         }
@@ -131,6 +128,12 @@
             return 'api';
         }
 
+        function getSourcePrefix(source) {
+            if (source?.includes('telegram')) return '[TG] ';
+            if (source?.includes('discord')) return '[DC] ';
+            return '[API] ';
+        }
+
         function showStatus(message, isError = false) {
             const messagesContainer = document.getElementById('messages');
 
@@ -201,7 +204,7 @@
                     }
 
                     messageHTML += `
-                        <span class="username">${message.username || 'Unknown'}</span>: ${message.text}
+                        <span class="username">${message.username || 'Unknown'}</span>: ${getSourcePrefix(message.source)}${message.text}
                         <span class="timestamp">${formatDate(message.timestamp)}</span>
                     `;
 
