@@ -8,17 +8,12 @@ async def init_db(mongo_uri, mongo_db):
     try:
         client = AsyncIOMotorClient(
             mongo_uri,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=10000,
-            socketTimeoutMS=10000,
-            retryWrites=True,
-            w='majority'
+
         )
         await client.admin.command('ping')
         db = client[mongo_db]
         return db
     except Exception as e:
-        print(f"Failed to connect to MongoDB: {e}")
         raise
 
 def get_db():

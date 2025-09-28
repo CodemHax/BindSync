@@ -47,7 +47,7 @@ def set_runtime(tb, db, config, tg_dc_map, dc_tg_map):
 @app.get("/messages")
 async def get_messages(limit: int = 100, offset: int = 0):
     try:
-        limit = max(1, min(500, limit))
+        limit = max(1, min(200, limit))
         offset = max(0, offset)
         messages = await store_functions.list_messages(limit=limit, offset=offset)
         print(messages)
