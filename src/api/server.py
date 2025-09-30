@@ -4,8 +4,13 @@ from src.core.models import MessageCreate, MessageReply
 from src.database import store_functions
 from src.utils.bridge import fwd_to_tg_rply, fwd_dd_with_reply
 
-app = FastAPI(title="BindSync", version="3.0.0")
-
+app = FastAPI(
+    title="BindSync",
+    version="3.0.0",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -134,20 +139,6 @@ async def reply_to_message(message_id: str, reply: MessageReply = Body(...)):
     return {"id": reply_id, "tg_msg_id": tg_msg_id, "dc_msg_id": dc_msg_id}
 
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint to verify runtime initialization"""
-    return {
-        "status": "ok",
-        "runtime": {
-            "tbot_initialized": tbot is not None,
-            "dbot_initialized": dbot is not None,
-            "config_loaded": cfg is not None,
-            "maps_initialized": map_tg_to_dc is not None and map_dc_to_tg is not None,
-            "telegram_chat_id": cfg.get("telegram_chat_id") if cfg else None,
-            "discord_channel_id": cfg.get("discord_channel_id") if cfg else None
-        }
-    }
 
 
 # @app.get("/")
