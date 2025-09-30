@@ -2,9 +2,6 @@ import time
 import uuid
 from src.database.database import get_db
 
-
-
-
 def api_shape(d):
     if not d:
         return None

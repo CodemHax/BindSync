@@ -1,40 +1,50 @@
 import discord
-from src.utils.bridge import is_from_telegram, format_from_discord
+from src.utils.bridge import istg, ddformat
 from src.database import store_functions
 
+class DiscordBot:
+    def __init__(self, channel_id):
+        self.channel_id = channel_id
+        self.client = None
+        self.forward_to_telegram = None
+        self.map_tg_to_dc = {}
+        self.map_dc_to_tg = {}
+        self.intents = discord.Intents.default()
+        self.intents.message_content = True
 
-def dd_client(channel_id):
-    intents = discord.Intents.default()
-    intents.message_content = True
-    client = discord.Client(intents=intents)
+    def set_forward_callback(self, callback):
+        self.forward_to_telegram = callback
 
-    @client.event
-    async def on_ready():
-        print("Connected to Discord channel" if client.get_channel(channel_id) else "Discord: channel not found")
+    def set_message_maps(self, tg_to_dc, dc_to_tg):
+        self.map_tg_to_dc = tg_to_dc
+        self.map_dc_to_tg = dc_to_tg
 
-    @client.event
-    async def on_message(message):
-        if message.author == client.user:
+    async def on_ready(self):
+       if self.client.get_channel(self.channel_id):
+           print("Connected to Discord channel")
+       else :
+           print("Discord: channel not found")
+
+    async def on_message(self, message):
+        if message.author == self.client.user:
             return
-        if message.channel.id != channel_id:
+        if message.channel.id != self.channel_id:
             return
-        if is_from_telegram(message.content or ""):
-            return
-
-        msg = format_from_discord(message.author.display_name, message.content or "")
-        forward_cb = getattr(client, 'forward_to_telegram', None)
-        map_tg_to_dc = getattr(client, 'map_tg_to_dc', {})
-        map_dc_to_tg = getattr(client, 'map_dc_to_tg', {})
-        if not forward_cb:
+        if istg(message.content or ""):
             return
 
-        reply_to_telegram_message_id = None
+        msg = ddformat(message.author.display_name, message.content or "")
+
+        if not self.forward_to_telegram:
+            return
+
+        rly_tg_message_id = None
         reply_to_internal_id = None
         reply_to_dc_id = None
         ref = getattr(message, 'reference', None)
         if ref and getattr(ref, 'message_id', None):
             reply_to_dc_id = ref.message_id
-            reply_to_telegram_message_id = map_dc_to_tg.get(ref.message_id)
+            rly_tg_message_id = self.map_dc_to_tg.get(ref.message_id)
             try:
                 m = await store_functions.find_by_dc_id(ref.message_id)
                 reply_to_internal_id = m["id"] if m else None
@@ -42,29 +52,34 @@ def dd_client(channel_id):
                 reply_to_internal_id = None
 
         dc_msg_id = message.id
-        try:
-            await store_functions.add_message(
-                source='discord',
-                text=message.content or "",
-                username=message.author.display_name,
-                dc_msg_id=dc_msg_id,
-                reply_to_dc_id=reply_to_dc_id,
-                reply_to_tg_id=reply_to_telegram_message_id,
-                reply_to_id=reply_to_internal_id,
-            )
-        except Exception:
-            pass
+        await store_functions.add_message(
+            source='discord',
+            text=message.content or "",
+            username=message.author.display_name,
+            dc_msg_id=dc_msg_id,
+            reply_to_dc_id=reply_to_dc_id,
+            reply_to_tg_id=rly_tg_message_id,
+            reply_to_id=reply_to_internal_id,
+        )
 
-        try:
-            tg_msg_id = await forward_cb(msg, reply_to_telegram_message_id=reply_to_telegram_message_id)
-            if tg_msg_id:
-                map_dc_to_tg[dc_msg_id] = tg_msg_id
-                map_tg_to_dc[tg_msg_id] = dc_msg_id
-                try:
-                    await store_functions.set_tg_id_for_dc(dc_msg_id, int(tg_msg_id))
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        tg_msg_id = await self.forward_to_telegram(msg, reply_to_telegram_message_id=rly_tg_message_id)
+        if tg_msg_id:
+            self.map_dc_to_tg[dc_msg_id] = tg_msg_id
+            self.map_tg_to_dc[tg_msg_id] = dc_msg_id
+            await store_functions.set_tg_id_for_dc(dc_msg_id, int(tg_msg_id))
 
-    return client
+    def create_client(self):
+        self.client = discord.Client(intents=self.intents)
+
+        self.client.event(self.on_ready)
+        self.client.event(self.on_message)
+
+        return self.client
+
+    def get_client(self):
+        return self.client if self.client else self.create_client()
+
+
+def dd_client(channel_id):
+    bot = DiscordBot(channel_id)
+    return bot.create_client()

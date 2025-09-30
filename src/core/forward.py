@@ -8,8 +8,8 @@ from src.bot.dc_bot import dd_client
 from src.database import database, store_functions
 from src.api.server import app, set_runtime
 from src.utils.bridge import (
-    forward_to_discord_with_reply as util_forward_dc_reply,
-    forward_to_telegram_with_reply as util_forward_tg_reply,
+    fwd_dd_with_reply as util_forward_dc_reply,
+    fwd_to_tg_rply as util_forward_tg_reply,
 )
 
 logging.basicConfig(
@@ -35,13 +35,12 @@ async def main():
     tbot = tg_client(chat_id=cfg["telegram_chat_id"], token=cfg["telegram_token"])
     dbot = dd_client(channel_id=cfg["discord_channel_id"])
 
-    async def forward_to_discord(message, reply_to_discord_message_id=None):
+    async def fwd_to_dd(message, reply_to_discord_message_id=None):
         return await util_forward_dc_reply(
             dbot,
             cfg["discord_channel_id"],
             message,
-            reply_to_discord_message_id=reply_to_discord_message_id,
-            logger=logger,
+            message_id=reply_to_discord_message_id,
         )
 
     async def forward_to_telegram(message, reply_to_telegram_message_id=None):
@@ -49,11 +48,10 @@ async def main():
             tbot,
             cfg["telegram_chat_id"],
             message,
-            reply_to_telegram_message_id=reply_to_telegram_message_id,
-            logger=logger,
+            msg_id=reply_to_telegram_message_id,
         )
 
-    tbot.bot_data['forward_to_discord'] = forward_to_discord
+    tbot.bot_data['fwd_to_dd'] = fwd_to_dd
     tbot.bot_data['map_tg_to_dc'] = map_tg_to_dc
     tbot.bot_data['map_dc_to_tg'] = map_dc_to_tg
 
@@ -65,8 +63,7 @@ async def main():
 
     config = uvicorn.Config(app, host=cfg["api_host"], port=cfg["api_port"], log_level="info")
     server = uvicorn.Server(config)
-    api_task = asyncio.create_task(server.serve())
-    logger.info(f"Starting API server on {cfg['api_host']}:{cfg['api_port']}")
+    api_task = asyncio.create_task(server.serve())add
 
     async with tbot, dbot:
         logger.info("Starting Telegram bot polling...")
