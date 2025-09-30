@@ -71,6 +71,3 @@ class TelegramBot:
         return self.app if self.app else self.create_application()
 
 
-def tg_client(chat_id, token):
-    bot = TelegramBot(chat_id, token)
-    return bot.create_application()

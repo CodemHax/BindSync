@@ -80,6 +80,3 @@ class DiscordBot:
         return self.client if self.client else self.create_client()
 
 
-def dd_client(channel_id):
-    bot = DiscordBot(channel_id)
-    return bot.create_client()

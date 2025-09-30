@@ -14,7 +14,7 @@ def load_config():
     mongo_uri = os.getenv("MONGO_URI", "")
     mongo_db = os.getenv("MONGO_DB", "")
     api_host = os.getenv("API_HOST", "localhost")
-    api_port = int(os.getenv("API_PORT", "8000"))
+    api_port = int(os.getenv("API_PORT", "000"))
 
     missing = []
     if not tg_token:

@@ -1,10 +1,9 @@
 import logging
 import asyncio
 import uvicorn
-
+from src.bot.tg_bot import TelegramBot
+from src.bot.dc_bot import DiscordBot
 from src.config import load_config
-from src.bot.tg_bot import tg_client
-from src.bot.dc_bot import dd_client
 from src.database import database, store_functions
 from src.api.server import app, set_runtime
 from src.utils.bridge import (
@@ -32,8 +31,11 @@ async def main():
     map_tg_to_dc = {}
     map_dc_to_tg = {}
 
-    tbot = tg_client(chat_id=cfg["telegram_chat_id"], token=cfg["telegram_token"])
-    dbot = dd_client(channel_id=cfg["discord_channel_id"])
+    tg_bot_instance = TelegramBot(chat_id=cfg["telegram_chat_id"], token=cfg["telegram_token"])
+    dc_bot_instance = DiscordBot(channel_id=cfg["discord_channel_id"])
+
+    tbot = tg_bot_instance.create_application()
+    dbot = dc_bot_instance.create_client()
 
     async def fwd_to_dd(message, reply_to_discord_message_id=None):
         return await util_forward_dc_reply(
@@ -51,19 +53,18 @@ async def main():
             msg_id=reply_to_telegram_message_id,
         )
 
-    tbot.bot_data['fwd_to_dd'] = fwd_to_dd
-    tbot.bot_data['map_tg_to_dc'] = map_tg_to_dc
-    tbot.bot_data['map_dc_to_tg'] = map_dc_to_tg
+    # Set up forward callbacks properly
+    tg_bot_instance.set_forward_callback(fwd_to_dd)
+    tg_bot_instance.set_message_maps(map_tg_to_dc, map_dc_to_tg)
 
-    setattr(dbot, 'forward_to_telegram', forward_to_telegram)
-    setattr(dbot, 'map_tg_to_dc', map_tg_to_dc)
-    setattr(dbot, 'map_dc_to_tg', map_dc_to_tg)
+    dc_bot_instance.set_forward_callback(forward_to_telegram)
+    dc_bot_instance.set_message_maps(map_tg_to_dc, map_dc_to_tg)
 
     set_runtime(tbot, dbot, cfg, map_tg_to_dc, map_dc_to_tg)
 
     config = uvicorn.Config(app, host=cfg["api_host"], port=cfg["api_port"], log_level="info")
     server = uvicorn.Server(config)
-    api_task = asyncio.create_task(server.serve())add
+    api_task = asyncio.create_task(server.serve())
 
     async with tbot, dbot:
         logger.info("Starting Telegram bot polling...")
